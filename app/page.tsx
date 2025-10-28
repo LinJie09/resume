@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
 
-// 定義用戶資料類型
+// === 定義型別 ===
 interface UserProfile {
   name: string;
   email: string;
@@ -10,10 +10,18 @@ interface UserProfile {
   bio: string;
   jobTitle: string;
   company: string;
-  // joinDate: string;
   avatar: string | null;
   website?: string;
   github?: string;
+}
+
+interface GithubRepo {
+  id: number;
+  name: string;
+  html_url: string;
+  description: string | null;
+  language: string | null;
+  stargazers_count: number;
 }
 
 interface InputFieldProps {
@@ -32,7 +40,7 @@ interface StateCardProps {
   color: "blue" | "green" | "purple" | "orange";
 }
 
-// 輸入框組件
+// === InputField ===
 const InputField: React.FC<InputFieldProps> = ({
   label,
   value,
@@ -56,18 +64,16 @@ const InputField: React.FC<InputFieldProps> = ({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className={`
-          w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900 
+        className={`w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900 
           placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 
           transition-all duration-200 disabled:bg-gray-50 disabled:cursor-not-allowed
-          ${icon ? "pl-10" : ""}
-        `}
+          ${icon ? "pl-10" : ""}`}
       />
     </div>
   </div>
 );
 
-// 統計卡片組件
+// === StatCard ===
 const StatCard: React.FC<StateCardProps> = ({ value, label, color = "blue" }) => {
   const colorClasses = {
     blue: "text-blue-600 bg-blue-50",
@@ -75,7 +81,6 @@ const StatCard: React.FC<StateCardProps> = ({ value, label, color = "blue" }) =>
     purple: "text-purple-600 bg-purple-50",
     orange: "text-orange-600 bg-orange-50",
   };
-
   return (
     <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow duration-300">
       <div className={`inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 ${colorClasses[color]}`}>
@@ -86,17 +91,16 @@ const StatCard: React.FC<StateCardProps> = ({ value, label, color = "blue" }) =>
   );
 };
 
+// === 主頁 ===
 export default function ModernProfilePage() {
-  // 初始用戶資料
   const defaultProfile: UserProfile = {
     name: "莊霖杰",
     email: "zxc664231@gmail.com",
     phone: "+886 916 531 881",
     location: "高雄市, 台灣",
-    bio: "熱愛技術的全端開發者，專精於 React、Next.js 和 Node.js。喜歡分享知識，持續學習最新技術趨勢。",
+    bio: "熱愛技術的全端開發者，專精於 React、Next.js 和 Node.js。",
     jobTitle: "軟體工程師",
     company: "無",
-    // joinDate: "2023年3月",
     avatar: null,
     github: "https://github.com/LinJie09",
   };
@@ -106,7 +110,12 @@ export default function ModernProfilePage() {
   const [editMode, setEditMode] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
-  // 從 localStorage 載入資料
+  // === 新增 GitHub Repo 狀態 ===
+  const [repos, setRepos] = useState<GithubRepo[]>([]);
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [repoError, setRepoError] = useState<string | null>(null);
+
+  // === 載入 localStorage ===
   useEffect(() => {
     const stored = localStorage.getItem("userProfile");
     if (stored) {
@@ -117,200 +126,206 @@ export default function ModernProfilePage() {
     setHydrated(true);
   }, []);
 
-  // 處理輸入變更
+  // === 抓取 GitHub Repo ===
+  useEffect(() => {
+    if (!profile.github) return;
+    const username = profile.github.split("github.com/")[1];
+    if (!username) return;
+    setLoadingRepos(true);
+    fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=6`)
+      .then((res) => {
+        if (!res.ok) throw new Error("GitHub API 請求失敗");
+        return res.json();
+      })
+      .then((data) => {
+        setRepos(data);
+        setRepoError(null);
+      })
+      .catch((err) => setRepoError(err.message))
+      .finally(() => setLoadingRepos(false));
+  }, [profile.github]);
+
+  // === 編輯控制 ===
   const handleFieldChange = useCallback(
-    (field: keyof UserProfile) => (value: string) => {
-      setTempProfile((prev) => ({ ...prev, [field]: value }));
-    },
+    (field: keyof UserProfile) => (value: string) => setTempProfile((p) => ({ ...p, [field]: value })),
     []
   );
-
-  // 處理頭像上傳
-  const handleAvatarUpload = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (file && file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const result = e.target?.result as string;
-          setTempProfile((prev) => ({ ...prev, avatar: result }));
-        };
-        reader.readAsDataURL(file);
-      }
-    },
-    []
-  );
-
-  const enterEditMode = useCallback(() => {
+  const handleAvatarUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string;
+        setTempProfile((p) => ({ ...p, avatar: result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
+  const enterEditMode = () => {
     setTempProfile(profile);
     setEditMode(true);
-  }, [profile]);
-
-  const saveChanges = useCallback(() => {
+  };
+  const saveChanges = () => {
     setProfile(tempProfile);
     localStorage.setItem("userProfile", JSON.stringify(tempProfile));
     setEditMode(false);
-  }, [tempProfile]);
-
-  const cancelEdit = useCallback(() => {
+  };
+  const cancelEdit = () => {
     setTempProfile(profile);
     setEditMode(false);
-  }, [profile]);
+  };
 
   const currentData = editMode ? tempProfile : profile;
-
-  if (!hydrated) {
-    return <p className="text-center py-20 text-gray-400">Loading...</p>;
-  }
+  if (!hydrated) return <p className="text-center py-20 text-gray-400">Loading...</p>;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 頂部導航 */}
+    <div className="h-screen overflow-hidden bg-gray-50 text-black flex flex-col m-0 p-0">
+
+      {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <span className="text-xl">←</span>
-              </button>
-              <h1 className="text-2xl font-bold text-gray-900">個人檔案</h1>
-            </div>
-            <div className="flex items-center space-x-3">
-              <button className="px-4 py-2 text-gray-600 hover:text-gray-900 transition-colors">
-                設定
-              </button>
-              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
-            </div>
-          </div>
+        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+          <h1 className="text-2xl font-bold text-gray-900">個人檔案</h1>
+          <button className="text-gray-500 hover:text-gray-800">⚙️</button>
         </div>
       </header>
 
-      {/* 主內容 */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* 左側 - 基本信息卡片 */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* 頭像 & 基本資料 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 p-8 text-center">
-                <div className="relative inline-block">
-                  <div className="w-24 h-24 mx-auto rounded-full bg-white/20 backdrop-blur-sm overflow-hidden border-4 border-white/30">
-                    {currentData.avatar ? (
-                      <img src={currentData.avatar} alt="頭像" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-white">
-                        <span className="text-3xl">👨‍💻</span>
-                      </div>
-                    )}
-                  </div>
-                  {editMode && (
-                    <label className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full shadow-lg cursor-pointer flex items-center justify-center hover:bg-gray-50 transition-colors">
-                      <span className="text-sm">📷</span>
-                      <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
-                    </label>
-                  )}
-                </div>
+      {/* Main */}
+      <main className="flex-1 overflow-y-auto max-w-6xl mx-auto px-6 py-8 grid lg:grid-cols-3 gap-8">
 
-                <div className="mt-4 text-white">
-                  {editMode ? (
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        value={currentData.name}
-                        onChange={(e) => handleFieldChange("name")(e.target.value)}
-                        className="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-center text-xl font-bold text-white placeholder-white/70 backdrop-blur-sm"
-                        placeholder="您的姓名"
-                      />
-                      <input
-                        type="text"
-                        value={currentData.jobTitle}
-                        onChange={(e) => handleFieldChange("jobTitle")(e.target.value)}
-                        className="w-full bg-white/20 border border-white/30 rounded-lg px-3 py-2 text-center text-white placeholder-white/70 backdrop-blur-sm"
-                        placeholder="職位"
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <h2 className="text-xl font-bold">{currentData.name}</h2>
-                      <p className="text-white/90 mt-1">{currentData.jobTitle}</p>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-6 space-y-4">
-                {/* <div className="flex items-center space-x-3 text-gray-600">
-                  <span className="text-lg">🏢</span>
-                  <span>{currentData.company}</span>
-                </div> */}
-                <div className="flex items-center space-x-3 text-gray-600">
-                  <span className="text-lg">📍</span>
-                  <span>{currentData.location}</span>
-                </div>
-                {/* <div className="flex items-center space-x-3 text-gray-600">
-                  <span className="text-lg">📅</span>
-                  <span>加入於 {currentData.joinDate}</span>
-                </div> */}
-              </div>
-
-              <div className="px-6 pb-6">
-                {editMode ? (
-                  <div className="flex space-x-2">
-                    <button onClick={saveChanges} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-xl font-medium transition-colors">保存</button>
-                    <button onClick={cancelEdit} className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-xl font-medium transition-colors">取消</button>
-                  </div>
+        {/* Left */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Avatar + Info */}
+          <div className="bg-white rounded-2xl border shadow-sm p-6 text-center">
+            <div className="relative inline-block">
+              <div className="w-24 h-24 mx-auto rounded-full bg-gray-100 overflow-hidden">
+                {currentData.avatar ? (
+                  <img src={currentData.avatar} alt="頭像" className="object-cover w-full h-full" />
                 ) : (
-                  <button onClick={enterEditMode} className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-xl font-medium transition-colors">編輯檔案</button>
+                  <div className="flex items-center justify-center h-full text-3xl">👨‍💻</div>
                 )}
               </div>
+              {editMode && (
+                <label className="absolute -bottom-1 -right-1 w-8 h-8 bg-white rounded-full shadow flex items-center justify-center cursor-pointer">
+                  📷
+                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                </label>
+              )}
             </div>
 
-            <div className="space-y-4">
-              <StatCard value="18" label="完成專案" color="blue" />
-              {/* <StatCard value="95%" label="客戶滿意度" color="green" /> */}
-              <StatCard value="1年" label="開發經驗" color="purple" />
-              {/* <StatCard value="18" label="獲得認證" color="orange" /> */}
+            <div className="mt-4">
+              {editMode ? (
+                <>
+                  <input
+                    value={currentData.name}
+                    onChange={(e) => handleFieldChange("name")(e.target.value)}
+                    className="w-full bg-gray-100 rounded-lg text-center py-1 mb-2"
+                  />
+                  <input
+                    value={currentData.jobTitle}
+                    onChange={(e) => handleFieldChange("jobTitle")(e.target.value)}
+                    className="w-full bg-gray-100 rounded-lg text-center py-1"
+                  />
+                </>
+              ) : (
+                <>
+                  <h2 className="text-xl font-bold">{currentData.name}</h2>
+                  <p className="text-gray-600">{currentData.jobTitle}</p>
+                </>
+              )}
+            </div>
+            <div className="mt-4 text-gray-500">{currentData.location}</div>
+            <div className="mt-4 text-b">
+              {editMode ? (
+                <div className="flex gap-2">
+                  <button onClick={saveChanges} className="flex-1 bg-green-500 text-white rounded-lg py-2">
+                    保存
+                  </button>
+                  <button onClick={cancelEdit} className="flex-1 bg-gray-400 text-white rounded-lg py-2">
+                    取消
+                  </button>
+                </div>
+              ) : (
+                <button onClick={enterEditMode} className="w-full bg-blue-500 text-white rounded-lg py-2">
+                  編輯檔案
+                </button>
+              )}
             </div>
           </div>
 
-          {/* 右側 - 詳細信息 */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* 聯絡資訊 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                <span className="mr-2">📞</span>
-                聯絡資訊
-              </h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <InputField label="電子郵件" value={currentData.email} onChange={handleFieldChange("email")} type="email" placeholder="your@email.com" icon="📧" disabled={!editMode} />
-                <InputField label="電話號碼" value={currentData.phone} onChange={handleFieldChange("phone")} type="tel" placeholder="+886 xxx xxx xxx" icon="📱" disabled={!editMode} />
-                {editMode ? (
-                  <InputField label="GitHub" value={currentData.github || ""} onChange={handleFieldChange("github")} placeholder="https://github.com/username" icon="💻" disabled={!editMode} />
-                ) : (
-                  <div className="space-y-1">
-                    <label className="block text-sm font-medium text-gray-700">GitHub</label>
-                    {currentData.github ? (
-                      <a href={currentData.github} target="_blank" rel="noopener noreferrer" className="block w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900 hover:bg-gray-50 transition-all duration-200">{currentData.github}</a>
-                    ) : (
-                      <span className="block w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-400">未提供</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="space-y-4">
+            <StatCard value="18" label="完成專案" color="blue" />
+            <StatCard value="1年" label="開發經驗" color="purple" />
+          </div>
+        </div>
 
-            {/* 個人簡介 */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-                <span className="mr-2">📝</span>
-                關於我
-              </h3>
+        {/* Right */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Contact */}
+          <div className="bg-white rounded-2xl p-6 border shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">📞 聯絡資訊</h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              <InputField label="電子郵件" value={currentData.email} onChange={handleFieldChange("email")} disabled={!editMode} />
+              <InputField label="電話號碼" value={currentData.phone} onChange={handleFieldChange("phone")} disabled={!editMode} />
               {editMode ? (
-                <textarea value={currentData.bio} onChange={(e) => handleFieldChange("bio")(e.target.value)} rows={6} className="w-full rounded-xl border border-gray-200 px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200 resize-none" placeholder="介紹一下您自己..." />
+                <InputField label="GitHub" value={currentData.github || ""} onChange={handleFieldChange("github")} />
               ) : (
-                <p className="text-gray-600 leading-relaxed text-base">{currentData.bio}</p>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">GitHub</label>
+                  {currentData.github ? (
+                    <a href={currentData.github} target="_blank" rel="noreferrer" className="block border rounded-xl px-4 py-3 hover:bg-gray-50">
+                      {currentData.github}
+                    </a>
+                  ) : (
+                    <p className="border rounded-xl px-4 py-3 text-gray-400">未提供</p>
+                  )}
+                </div>
               )}
             </div>
+          </div>
+
+          {/* Bio */}
+          <div className="bg-white rounded-2xl p-6 border shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">📝 關於我</h3>
+            {editMode ? (
+              <textarea
+                value={currentData.bio}
+                onChange={(e) => handleFieldChange("bio")(e.target.value)}
+                className="w-full border rounded-xl p-3"
+                rows={5}
+              />
+            ) : (
+              <p className="text-gray-600">{currentData.bio}</p>
+            )}
+          </div>
+
+          {/* === 新增：GitHub 作品集 === */}
+          <div className="bg-white rounded-2xl p-6 border shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">💻 GitHub 作品集</h3>
+            {loadingRepos ? (
+              <p className="text-gray-400">載入中...</p>
+            ) : repoError ? (
+              <p className="text-red-500">{repoError}</p>
+            ) : repos.length > 0 ? (
+              <div className="grid md:grid-cols-2 gap-4">
+                {repos.map((repo) => (
+                  <a
+                    key={repo.id}
+                    href={repo.html_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="border rounded-xl p-4 hover:shadow-md transition"
+                  >
+                    <h4 className="font-semibold text-blue-600">{repo.name}</h4>
+                    <p className="text-gray-600 text-sm mt-1 line-clamp-2">{repo.description || "（無描述）"}</p>
+                    <div className="text-xs text-gray-500 mt-2">
+                      ⭐ {repo.stargazers_count}　·　{repo.language || "未知語言"}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-400">目前尚無公開專案</p>
+            )}
           </div>
         </div>
       </main>
